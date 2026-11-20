@@ -4,7 +4,8 @@
 
 | ID | Severity/state | Reproduction / expected vs actual | Root cause / correction | Evidence / related risk |
 |---|---|---|---|---|
-| B010 | medium / reproduced | Search the public web for Windows-to-Mac keyboard and mouse sharing and direct Ethernet screen control in Japanese or English. GitHub finds the project by name, but the web search sample returns no official page. | The repository has a README and release notes but no dedicated, crawlable product landing page. The search provider's index state is unknown. | Add a static landing page with language variants and a sitemap, link it from GitHub, then check anonymous access and repeat the searches. Ranking and indexing remain external. |
+| B010 | medium / verified for crawl access | The repository had a README and release notes but no dedicated public product overview for web discovery. | Publish static Japanese and English pages with reciprocal language links, canonical URLs, a sitemap and direct download links. Link from GitHub. | Both canonical URLs returned HTTP 200 without login, including with a Googlebot user-agent string. No `noindex` was present. The stylesheet, sitemap and latest release link resolved. |
+| E002 | external / pending | Immediately after the Pages deployment, repeat exact-name, Japanese and English use-case, and site-scoped web searches. The tested index still returned no official URL. | Actual indexing and ranking depend on the search provider. The absence of a result does not establish the provider's internal indexing status. | Public page delivery passed. Search visibility has not yet been verified. |
 
 | ID | Severity/state | Reproduction / expected vs actual | Root cause / correction | Evidence / related risk |
 |---|---|---|---|---|
