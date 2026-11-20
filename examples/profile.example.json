@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "host": "192.168.250.2",
+  "user": "macuser",
+  "identity": "~/.ssh/winmaclink_ed25519",
+  "host_key_alias": "mac-mini.local",
+  "windows_name": "windows-main",
+  "mac_name": "mac-mini",
+  "mac_position": "left",
+  "topology": "direct",
+  "windows_ip": "192.168.250.1",
+  "mac_ip": "192.168.250.2",
+  "prefix": 30,
+  "local_port": 15910,
+  "ssh_port": 22,
+  "viewer": "C:/Program Files/TigerVNC/vncviewer.exe"
+}

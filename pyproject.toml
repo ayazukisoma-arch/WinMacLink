@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "winmaclink"
+version = "0.1.0"
+description = "Reviewable Windows-to-Mac connection diagnosis and setup"
+requires-python = ">=3.11"
+
+[project.scripts]
+winmaclink = "winmaclink.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["winmaclink*"]
+
+[tool.setuptools.package-data]
+winmaclink = ["assets/WinMacLink.ico"]
