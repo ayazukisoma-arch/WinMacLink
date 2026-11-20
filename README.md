@@ -1,6 +1,13 @@
-# WinMacLink — WindowsからMacを使うための接続診断・導入支援
+# WinMacLink — WindowsとMacのマウス・キーボード共有、Macのリモート操作
 
-Windowsを操作元、Macを接続先として、SSH・Deskflow・VNCの状態を切り分けるローカルツールです。第1版の対象は直結LANです。
+WinMacLinkは、WindowsとMacをLANケーブルで直結し、WindowsのマウスとキーボードでMacを操作できる無料ツールです。公開版の操作元はWindows x64です。
+
+- **モニター2台で操作を切り替える。** Windowsの画面端へカーソルを動かすと、隣のMacを同じマウスとキーボードで操作できます。入力共有にはDeskflowを使います。
+- **WindowsのウィンドウにMacの画面を表示する。** Windows側からMacのデスクトップを表示し、そのウィンドウ内で操作できます。画面共有にはSSH経由のVNCを使います。
+
+**English:** WinMacLink is a free Windows-to-Mac tool for direct Ethernet connections. Use one keyboard and mouse across two computers with Deskflow, or view and control your Mac desktop in a Windows window via VNC over SSH. The Windows x64 app guides you through connection setup and macOS permissions.
+
+[Windows x64版をダウンロード / Download for Windows x64](https://github.com/ayazukisoma-arch/WinMacLink/releases/latest)
 
 **開発中の0.1版です。全自動セットアップ済みの製品ではありません。** 診断、設定の生成・復元、Windows導入コマンド、Mac用Deskflow導入、SSH経由VNC接続を実装しています。OSの許可、最初の鍵登録、既存設定との統合、起動前ログインや再起動後の実機確認は別工程です。
 
