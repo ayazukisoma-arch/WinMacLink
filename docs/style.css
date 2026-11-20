@@ -1,0 +1,25 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.65;
+}
+
+main {
+  max-width: 44rem;
+  margin: 2rem auto 4rem;
+  padding: 0 1.25rem;
+}
+
+header { text-align: end; }
+h1 { line-height: 1.2; }
+h2 { margin-top: 2rem; line-height: 1.3; }
+footer { margin-top: 2rem; }
+
+.download {
+  display: inline-block;
+  padding: .65rem 1rem;
+  border-radius: .5rem;
+  background: #164aa2;
+  color: #fff;
+  font-weight: 650;
+}

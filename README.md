@@ -9,6 +9,8 @@ WinMacLinkは、WindowsとMacをLANケーブルで直結し、Windowsのマウ�
 
 [Windows x64版をダウンロード / Download for Windows x64](https://github.com/ayazukisoma-arch/WinMacLink/releases/latest)
 
+[公式紹介ページ](https://ayazukisoma-arch.github.io/WinMacLink/) · [English overview](https://ayazukisoma-arch.github.io/WinMacLink/en/)
+
 **開発中の0.1版です。全自動セットアップ済みの製品ではありません。** 診断、設定の生成・復元、Windows導入コマンド、Mac用Deskflow導入、SSH経由VNC接続を実装しています。OSの許可、最初の鍵登録、既存設定との統合、起動前ログインや再起動後の実機確認は別工程です。
 
 ## GUI

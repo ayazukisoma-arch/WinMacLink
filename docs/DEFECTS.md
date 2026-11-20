@@ -1,5 +1,11 @@
 # Defect ledger
 
+## Public search discovery
+
+| ID | Severity/state | Reproduction / expected vs actual | Root cause / correction | Evidence / related risk |
+|---|---|---|---|---|
+| B010 | medium / reproduced | Search the public web for Windows-to-Mac keyboard and mouse sharing and direct Ethernet screen control in Japanese or English. GitHub finds the project by name, but the web search sample returns no official page. | The repository has a README and release notes but no dedicated, crawlable product landing page. The search provider's index state is unknown. | Add a static landing page with language variants and a sitemap, link it from GitHub, then check anonymous access and repeat the searches. Ranking and indexing remain external. |
+
 | ID | Severity/state | Reproduction / expected vs actual | Root cause / correction | Evidence / related risk |
 |---|---|---|---|---|
 | B001 | medium / verified | Render mac-fixed-ip.sh, apply, inspect bytes. Shell script should begin `#!`; initially began UTF-8 BOM. | Shared output encoder used PowerShell-compatible BOM for every platform; select encoding by suffix. | Regression: shell has no BOM, PowerShell has BOM; cross-platform startup. |
