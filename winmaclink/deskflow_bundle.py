@@ -1,13 +1,14 @@
-"""Verified Deskflow payloads included with the offline WinMacLink distribution."""
+"""Acquire and install the pinned upstream Deskflow packages."""
 import hashlib
+from http.client import HTTPException
 import os
 from pathlib import Path
 import platform
 import shutil
 import tempfile
+from urllib.request import urlopen
 
-from . import APPLICATION_ROOT
-from .mac_install import HASHES, VERSION
+from .mac_install import HASHES, RELEASE_URL, VERSION
 from .onboarding import settings_directory
 
 WINDOWS_HASHES = {
@@ -18,21 +19,22 @@ PAYLOADS = {
     **{f"deskflow-{VERSION}-win-{arch}-portable.zip": digest for arch, digest in WINDOWS_HASHES.items()},
     **{f"deskflow-{VERSION}-macos-{arch}.dmg": digest for arch, digest in HASHES.items()},
 }
-BUNDLE = APPLICATION_ROOT / "vendor" / "deskflow"
-
-
-def verified_payload(directory, name):
+def download_payload(directory, name):
+    expected = PAYLOADS[name]
     path = Path(directory) / name
-    if not path.is_file():
-        raise ValueError(f"WinMacLinkの同梱ファイルが見つかりません。{name}")
+    try:
+        with urlopen(f"{RELEASE_URL}/{name}", timeout=30) as source, path.open("xb") as output:
+            shutil.copyfileobj(source, output, length=1024 * 1024)
+    except (OSError, HTTPException) as exc:
+        raise ValueError(f"Deskflowを公式配布元から取得できませんでした。ネット接続を確認して再実行してください。\n{name}") from exc
     with path.open("rb") as file:
         actual = hashlib.file_digest(file, "sha256").hexdigest()
-    if actual != PAYLOADS[name]:
-        raise ValueError(f"Deskflow同梱ファイルのSHA-256が一致しません。{name}")
+    if actual != expected:
+        raise ValueError(f"取得したDeskflowのSHA-256が一致しません。導入を中止しました。\n{name}")
     return path
 
 
-def install_windows_bundle(directory, *, destination=None):
+def install_windows_package(*, destination=None):
     if destination is None:
         if os.name != "nt":
             raise ValueError("Windows版DeskflowはWindowsへ配置してください。")
@@ -40,9 +42,8 @@ def install_windows_bundle(directory, *, destination=None):
     machine = platform.machine().lower()
     arch = {"amd64": "x64", "x86_64": "x64", "arm64": "arm64", "aarch64": "arm64"}.get(machine)
     if not arch:
-        raise ValueError("このWindows環境に対応するDeskflow同梱版がありません。")
+        raise ValueError("このWindows環境に対応するDeskflowの公式パッケージがありません。")
     name = f"deskflow-{VERSION}-win-{arch}-portable"
-    archive = verified_payload(directory, name + ".zip")
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     target = destination / name
@@ -50,9 +51,14 @@ def install_windows_bundle(directory, *, destination=None):
     if core.is_file():
         return core
     with tempfile.TemporaryDirectory(dir=destination) as temp:
+        archive = download_payload(temp, name + ".zip")
         shutil.unpack_archive(archive, temp)
         extracted = Path(temp) / name
         if not (extracted / core.name).is_file():
             raise ValueError("展開したDeskflowに実行ファイルがありません。")
-        extracted.rename(target)
+        try:
+            extracted.rename(target)
+        except FileExistsError:
+            if not core.is_file():
+                raise
     return core

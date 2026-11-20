@@ -1,4 +1,4 @@
-"""Install the included Deskflow builds and apply matched settings to an isolated pair."""
+"""Provision Deskflow and apply matched settings to an isolated pair."""
 import base64
 import hashlib
 from pathlib import Path
@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 import time
 
-from .deskflow_bundle import BUNDLE, install_windows_bundle, verified_payload
+from .deskflow_bundle import download_payload, install_windows_package
 from .mac_install import VERSION, HASHES, install_script, install_result
 from .onboarding import settings_directory
 from .process import hidden_console
@@ -19,7 +19,14 @@ from .profile import ssh_arguments
 from .setup import render
 
 
-def prepare_pair(profile, *, bundle=BUNDLE, runner=subprocess.run):
+CLIENT_LOG_MARKER = "[WinMacLink client start]"
+
+
+class DeskflowPermissionError(ValueError):
+    """The Mac client stopped because macOS did not trust its input process."""
+
+
+def prepare_pair(profile, *, runner=subprocess.run):
     if profile.topology != "direct":
         raise ValueError("Deskflowの設定には直結LANの接続が必要です。")
     args = ssh_arguments(profile)
@@ -28,20 +35,23 @@ def prepare_pair(profile, *, bundle=BUNDLE, runner=subprocess.run):
     arch = target.stdout.strip()
     if target.returncode or arch not in HASHES:
         raise ValueError("インストール先のMacとCPUをSSHで確認できません。")
-    dmg = verified_payload(bundle, f"deskflow-{VERSION}-macos-{arch}.dmg")
-    core = install_windows_bundle(bundle)
     present = runner(args + ["test -d /Applications/Deskflow.app"],
                      capture_output=True, timeout=20, **hidden_console())
+    if present.returncode not in (0, 1):
+        raise ValueError("MacのDeskflow導入状況をSSHで確認できません。")
+    core = install_windows_package()
     if present.returncode != 0:
-        with dmg.open("rb") as source:
-            result = runner(args + [install_script(bundled=True)], stdin=source,
-                            capture_output=True, timeout=240, **hidden_console())
+        with tempfile.TemporaryDirectory() as directory:
+            dmg = download_payload(directory, f"deskflow-{VERSION}-macos-{arch}.dmg")
+            with dmg.open("rb") as source:
+                result = runner(args + [install_script(upload=True)], stdin=source,
+                                capture_output=True, timeout=240, **hidden_console())
         result.stdout = result.stdout.decode("utf-8", errors="replace")
         install_result(result)
     version = runner(args + ["/Applications/Deskflow.app/Contents/MacOS/deskflow-core --version"],
                      capture_output=True, text=True, timeout=15, **hidden_console())
     if version.returncode or not re.search(rf"\bv{re.escape(VERSION)}(?=,|\s|$)", version.stdout):
-        raise ValueError(f"MacのDeskflowのバージョンを確認してください。この構成は同梱の{VERSION}を使用します。")
+        raise ValueError(f"MacのDeskflowのバージョンを確認してください。この構成は{VERSION}を使用します。")
 
     folder = settings_directory() / "deskflow-pairs" / profile.host_key_alias
     folder.mkdir(parents=True, exist_ok=True)
@@ -82,7 +92,28 @@ def _fingerprint(pem):
     return hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate.group())).hexdigest()
 
 
-def activate_pair(profile):
+def _wait_for_client(process, log, mac_name, *, timeout=16, stable_for=2.5):
+    connected = f'client "{mac_name}" has connected'
+    disconnected = f'client "{mac_name}" has disconnected'
+    deadline = time.monotonic() + timeout
+    connection = -1
+    connected_at = deadline
+    while process.poll() is None and time.monotonic() < deadline:
+        text = log.read_text(encoding="utf-8", errors="replace")
+        latest = text.rfind(connected)
+        if latest > text.rfind(disconnected):
+            if latest != connection:
+                connection = latest
+                connected_at = time.monotonic()
+            if time.monotonic() - connected_at >= stable_for:
+                return True
+        else:
+            connection = -1
+        time.sleep(0.4)
+    return False
+
+
+def activate_pair(profile, *, request_permission=None):
     """Pair only app-owned certificates, then start the two Deskflow cores."""
     if profile.topology != "direct":
         raise ValueError("Deskflowの起動には直結LANの接続が必要です。")
@@ -119,7 +150,9 @@ def activate_pair(profile):
             combined.write_bytes(cert.read_bytes() + key.read_bytes())
             combined.replace(certificate)
     windows_hash = _fingerprint(certificate.read_text(encoding="ascii"))
-    mac_settings = shlex.quote(pair["mac_settings"])
+    mac_settings_path = pair["mac_settings"]
+    mac_settings = shlex.quote(mac_settings_path)
+    mac_client_log = shlex.quote(mac_settings_path.rsplit("/", 1)[0] + "/client.log")
     prepare_mac = f"""set -eu
 umask 077
 cd "$HOME"
@@ -154,8 +187,9 @@ folder=$(dirname "$settings")
 log="$folder/client.log"
 core=/Applications/Deskflow.app/Contents/MacOS/deskflow-core
 test -x "$core"
-test "$(stat -f %u /dev/console)" = "$(id -u)"
 domain="gui/$(id -u)"
+launchctl print "$domain" >/dev/null 2>&1
+printf '\\n%s\\n' '{CLIENT_LOG_MARKER}' >> "$log"
 if launchctl print "$domain/$label" >/dev/null 2>&1; then
     launchctl kickstart -k "$domain/$label"
 else
@@ -185,13 +219,24 @@ fi
         if result.returncode:
             raise ValueError("MacのDeskflowを起動できません。Macにログインしているか確認してください。")
         mac_started = True
-        expected = f'client "{profile.mac_name}" has connected'
-        for _ in range(25):
-            if process.poll() is not None:
-                break
-            if expected in log.read_text(encoding="utf-8", errors="replace"):
-                return "Deskflowの接続を確認しました。Windows画面の端からMacへカーソルを移動できます。"
-            time.sleep(0.4)
+        if _wait_for_client(process, log, profile.mac_name):
+            return process
+        mac_log = subprocess.run(args + [f'tail -n 100 "$HOME"/{mac_client_log}'],
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, **hidden_console())
+        last_run = mac_log.stdout.rpartition(CLIENT_LOG_MARKER)[2].lower()
+        if "failed to create quartz event tap" in last_run or "process is not trusted" in last_run:
+            if request_permission is not None:
+                cancel = request_permission()
+                deadline = time.monotonic() + 180
+                while time.monotonic() < deadline and process.poll() is None:
+                    if cancel.wait(2):
+                        raise ValueError("入力共有の設定を中止しました。")
+                    result = subprocess.run(args + [start_mac], capture_output=True, timeout=20, **hidden_console())
+                    if result.returncode:
+                        raise ValueError("MacのDeskflowを再起動できません。Macへの接続を確認してください。")
+                    if _wait_for_client(process, log, profile.mac_name, timeout=6):
+                        return process
+            raise DeskflowPermissionError("Macの入力許可を確認できませんでした。許可した後で『2モニターで入力共有』をもう一度押してください。")
         raise ValueError(f"Deskflowの接続を確認できません。MacのアクセシビリティとWindowsの通信許可を確認してください。ログ {log}")
     except (OSError, ValueError, subprocess.SubprocessError):
         if process.poll() is None:

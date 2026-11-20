@@ -4,6 +4,7 @@ from .profile import ssh_arguments
 from .process import hidden_console
 
 VERSION = "1.27.0"
+RELEASE_URL = f"https://github.com/deskflow/deskflow/releases/download/v{VERSION}"
 # https://github.com/deskflow/deskflow/releases/download/v1.27.0/sums.txt
 HASHES = {
     "arm64": "dd21e79e566314394214906d3338c505d337af536fc580c022ee3fadffad0c97",
@@ -11,9 +12,9 @@ HASHES = {
 }
 
 
-def install_script(*, bundled=False):
-    acquire = ('cat > "$work/$file"' if bundled else
-               f'curl -fL --max-time 180 "https://github.com/deskflow/deskflow/releases/download/v{VERSION}/$file" -o "$work/$file"')
+def install_script(*, upload=False):
+    acquire = ('cat > "$work/$file"' if upload else
+               f'curl -fL --max-time 180 "{RELEASE_URL}/$file" -o "$work/$file"')
     return f'''set -eu
 if [ -d /Applications/Deskflow.app ]; then
   echo ALREADY_PRESENT
@@ -26,15 +27,24 @@ case "$(uname -m)" in
 esac
 work=$(mktemp -d "$HOME/Library/Caches/winmaclink-install.XXXXXX")
 file="deskflow-{VERSION}-macos-$arch.dmg"
+mounted=0
+cleanup() {{
+  if [ "$mounted" = 1 ]; then
+    hdiutil detach "$work/mount" >/dev/null 2>&1 || return 0
+  fi
+  rm -f "$work/$file"
+  rm -rf "$work/Deskflow.app"
+  rmdir "$work/mount" "$work" 2>/dev/null || true
+}}
+trap cleanup EXIT
 {acquire}
-cd "$work"
-printf '%s  %s\\n' "$checksum" "$file" | shasum -a 256 -c -
+printf '%s  %s\\n' "$checksum" "$work/$file" | shasum -a 256 -c -
 mkdir "$work/mount"
-trap 'hdiutil detach "$work/mount" >/dev/null 2>&1 || true' EXIT
 printf 'Y\\n' | hdiutil attach "$work/$file" -nobrowse -mountpoint "$work/mount" >/dev/null
+mounted=1
 codesign --verify --deep --strict "$work/mount/Deskflow.app"
 ditto "$work/mount/Deskflow.app" "$work/Deskflow.app"
-mv -n "$work/Deskflow.app" /Applications/Deskflow.app
+mv -n "$work/Deskflow.app" /Applications/
 test -d /Applications/Deskflow.app
 echo INSTALLED_REQUIRES_OS_PERMISSIONS
 '''

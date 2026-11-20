@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from winmaclink.profile import Profile, ssh_arguments
 from winmaclink.doctor import diagnose
-from winmaclink.guidance import filevault_guidance, open_mac_panel, STEPS, format_report
+from winmaclink.guidance import filevault_guidance, open_deskflow_permissions, open_mac_panel, STEPS, format_report
 from winmaclink.network import resolve_local
 
 
@@ -63,6 +63,26 @@ class LocalBoundaryTests(unittest.TestCase):
         self.assertNotIn("sudo", command[-1])
         with self.assertRaises(ValueError):
             open_mac_panel(Profile(), "filevault; disable", runner)
+
+    def test_deskflow_permissions_reveals_the_selected_original(self):
+        for target, path in (("app", "/Applications/Deskflow.app"),
+                             ("core", "/Applications/Deskflow.app/Contents/MacOS/deskflow-core")):
+            with self.subTest(target=target):
+                runner = Mock(return_value=subprocess.CompletedProcess([], 0))
+                open_deskflow_permissions(Profile(), target, runner=runner)
+                command = runner.call_args.args[0][-1]
+                self.assertIn("Privacy_Accessibility", command)
+                self.assertTrue(command.endswith(f"/usr/bin/open -R {path}"))
+        with self.assertRaises(ValueError):
+            open_deskflow_permissions(Profile(), "other", runner=runner)
+        runner.assert_called_once()
+
+    def test_deskflow_permissions_reports_why_finder_could_not_open(self):
+        for code, hint in ((21, "ロックを解除"), (22, "実行ファイルが見つかりません")):
+            with self.subTest(code=code):
+                runner = Mock(return_value=subprocess.CompletedProcess([], code))
+                with self.assertRaisesRegex(ValueError, hint):
+                    open_deskflow_permissions(Profile(), runner=runner)
 
 
 class FreshMachineSimulationTests(unittest.TestCase):

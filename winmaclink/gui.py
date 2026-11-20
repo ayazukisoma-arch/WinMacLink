@@ -11,6 +11,7 @@ import ipaddress
 
 from .doctor import diagnose
 from .guidance import STEPS, open_mac_panel, open_windows_network, format_report, register_ssh_key
+from .guidance import open_deskflow_permissions
 from .profile import Profile
 from .transaction import plan, apply, rollback
 from .runtime import connect, install, windows_setup_packages
@@ -36,17 +37,25 @@ def launch(profile_path=None):
     root.configure(padx=20, pady=16)
     state = {"profile": None, "path": None, "busy": False}
     jobs = Queue()
-    status = tk.StringVar(value="保存済みのMacを確認しています。")
+    status = tk.StringVar()
     ttk.Label(root, text="WinMacLink", font=("Segoe UI", 22, "bold")).pack(anchor="w")
     ttk.Label(root, text="直結LAN / ローカル操作限定 / OS設定は本人が管理", font=("Segoe UI", 11)).pack(anchor="w", pady=(0, 12))
     tools = ttk.Frame(root)
     tools.pack(fill="x")
-    path_label = ttk.Label(root, text="接続先：確認中")
-    path_label.pack(anchor="w", pady=8)
+    mac_side_label = tk.StringVar(value="左")
+    mac_side = {"左": "left", "右": "right", "上": "above", "下": "below"}
+    input_options = ttk.Frame(root)
+    input_options.pack(fill="x", pady=(8, 0))
+    ttk.Label(input_options, text="入力共有でMacへ移る方向").pack(side="left", padx=(0, 6))
+    ttk.Combobox(input_options, textvariable=mac_side_label, values=tuple(mac_side),
+                 state="readonly", width=4).pack(side="left")
     ttk.Label(root, textvariable=status, wraplength=880).pack(anchor="w", pady=8)
     output = ScrolledText(root, wrap="word", height=23, font=("Consolas", 10))
     output.pack(fill="both", expand=True)
-    output.insert("end", "初回は『接続セットアップ』を押し、Macでリモートログインをオンにしてください。\n")
+    first_use = "初回は「接続セットアップ」を押してください。Macのリモートログインを有効にして接続する手順が表示されます。"
+    linked = "Mac連携済み。使いたい共有方法を選んでください。\n\n「2モニターで入力共有」または「Windows内にMacを表示」"
+    unverified = "Macの接続設定は保存済みです。\nMacの電源とLANケーブルを確認し、「診断」または「接続セットアップ」を押してください。"
+    output.insert("end", "保存済みのMacを確認しています…")
 
     def display(value):
         output.delete("1.0", "end")
@@ -63,8 +72,7 @@ def launch(profile_path=None):
         else:
             path = state["path"]
         state.update(profile=p, path=str(path))
-        path_label.configure(text=f"接続先：{p.mac_name}（このPCに記憶済み）")
-        status.set("接続先を自動で読み込みました。『診断』または『Mac画面を開く』を押せます。")
+        mac_side_label.set(next(label for label, side in mac_side.items() if side == p.mac_position))
 
     def load(path=None):
         if state["busy"]:
@@ -78,6 +86,7 @@ def launch(profile_path=None):
             messagebox.showerror("設定を読めません", str(exc), parent=root)
             return
         accept_profile(p)
+        check_home_connection(p)
 
     def background(label, work, on_done=None, *, on_error=None):
         if state["busy"]:
@@ -95,8 +104,9 @@ def launch(profile_path=None):
     def poll():
         try:
             success, value, on_done = jobs.get_nowait()
-            state["busy"] = False
-            status.set("処理が終わりました。未確認項目や次の手順も確認してください。" if success else "処理を完了できませんでした。理由を確認してください。")
+            if success is not None:
+                state["busy"] = False
+                status.set("処理が終わりました。未確認項目や次の手順も確認してください。" if success else "処理を完了できませんでした。理由を確認してください。")
             if on_done:
                 guarded(lambda: on_done(value))()
             else:
@@ -162,12 +172,18 @@ def launch(profile_path=None):
         ), wraplength=700, justify="left").pack(fill="x", padx=20, pady=(10, 16))
 
     def connection_result(report):
-        display(format_report(report))
         ready = any(c["code"] == "SSH_AUTH" and c["status"] == "ok" for c in report["checks"])
         if ready:
-            status.set("Macへの鍵認証を確認しました。使いたいモードを選べます。")
+            status.set("")
+            display(linked)
         else:
-            status.set("Macへの鍵認証を確認できません。診断結果を確認してください。")
+            status.set("Macへの接続を確認できませんでした。")
+            display(unverified + "\n\n" + format_report(report))
+
+    def check_home_connection(p):
+        display("保存した設定でMacとの接続を確認しています…")
+        background("Macとの接続を確認中", lambda: diagnose(p), connection_result,
+                   on_error=lambda message: display(unverified + "\n\n" + message))
 
     def register(candidate=None):
         if state["busy"]:
@@ -549,23 +565,98 @@ Windowsは同じボタンから復元の確認を開きます。Macは控えた�
     def setup_deskflow():
         if state["busy"]:
             return
-        p = loaded()
+        direction = mac_side_label.get()
+        p = replace(loaded(), mac_position=mac_side[direction])
+        current = state.get("deskflow_process")
         if not approve_change(
             "2モニターで入力共有",
-            "同梱のDeskflowを両機に用意し、設定と証明書を揃えて入力共有を開始します。"
+            "Deskflowが入っていない場合、Windowsから公式配布元に接続して必要な版を取得し、両機に導入します。"
+            "\nその後、設定と証明書を揃えて入力共有を開始します。"
+            f"\nWindows画面の{direction}端をMacへの切り替えに使います。実行中の入力共有があれば切り替えます。"
             "\n\nMacでアクセシビリティやローカルネットワークの許可を求められた場合は、Mac本体で許可してください。"
             "\n\n開始しますか？",
             root,
         ):
             return
 
+        cancel = threading.Event()
+        permission_window = None
+
+        def show_permission(error):
+            nonlocal permission_window
+            status.set("Macの入力許可を待っています。許可されると自動で続きます。")
+            permission_window = tk.Toplevel(root)
+            permission_window.title("MacでDeskflowの入力を許可")
+            permission_window.transient(root)
+            instructions = (
+                "1. Windowsで下のボタンを押し、MacのFinderに追加するファイルを表示します。"
+                "Macで「＋」から開いたファイル選択画面が出ている場合は、先に「キャンセル」で閉じます。\n\n"
+                "2. MacのFinderで選択されたファイルを「デバイスの制御とデータへのアクセス」または"
+                "「アクセシビリティ」のアプリが並んでいる一覧へドラッグします。"
+                "Finderのファイルをダブルクリックする必要はありません。\n\n"
+                "3. Deskflow本体と deskflow-core のスイッチを両方オンにします。既に一覧にある項目はスイッチだけ確認します。"
+                "WinMacLinkが接続を再試行します。待機が終わっていたら、Windowsで「2モニターで入力共有」を押し直します。"
+            )
+            ttk.Label(permission_window, text=instructions, wraplength=540, justify="left").pack(anchor="w", padx=18, pady=16)
+            feedback = tk.StringVar(value=error or "MacのFinderに deskflow-core を表示するよう指示しました。")
+            buttons = ttk.Frame(permission_window)
+            buttons.pack(anchor="w", padx=18)
+            ttk.Label(permission_window, textvariable=feedback, wraplength=540).pack(anchor="w", padx=18, pady=12)
+
+            def reveal(target, name):
+                for button in buttons.winfo_children():
+                    button.state(["disabled"])
+                feedback.set("Macでファイルを表示しています…")
+
+                def finished(message):
+                    if permission_window.winfo_exists():
+                        feedback.set(message)
+                        for button in buttons.winfo_children():
+                            button.state(["!disabled"])
+
+                def work():
+                    try:
+                        open_deskflow_permissions(p, target)
+                        message = f"MacのFinderに {name} を表示するよう指示しました。"
+                    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                        message = str(exc)
+                    jobs.put((None, message, finished))
+
+                threading.Thread(target=work, daemon=True).start()
+
+            for target, name in (("app", "Deskflow本体"), ("core", "deskflow-core")):
+                ttk.Button(buttons, text=f"Macで {name} を表示", command=lambda t=target, n=name: reveal(t, n)).pack(side="left", padx=(0, 6))
+            ttk.Button(permission_window, text="中止", command=cancel.set).pack(pady=(0, 12))
+            permission_window.protocol("WM_DELETE_WINDOW", cancel.set)
+
+        def request_permission():
+            error = None
+            try:
+                open_deskflow_permissions(p)
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                error = str(exc)
+            jobs.put((None, error, show_permission))
+            return cancel
+
+        def show_result(value):
+            if permission_window is not None:
+                permission_window.destroy()
+            display(value)
+
+        def connected(process):
+            state["deskflow_process"] = process
+            show_result(f"Deskflowの接続を確認しました。Windows画面の{direction}端からMacに移動できます。")
+
         def work():
             report = diagnose(p)
             if not any(check["code"] == "SSH_AUTH" and check["status"] == "ok" for check in report["checks"]):
                 raise ValueError("先に『接続セットアップ』でMacへのSSH接続を設定してください。")
-            return activate_pair(p)
+            if current and current.poll() is None:
+                current.terminate()
+                current.wait(timeout=5)
+            return activate_pair(p, request_permission=request_permission)
 
-        background("Deskflowを導入・設定し、接続を確認しています", work)
+        background("Deskflowを導入・設定し、接続を確認しています", work, connected, on_error=show_result)
 
     def setup_vnc():
         existing = state.get("vnc_setup_dialog")
@@ -672,12 +763,10 @@ Windowsは同じボタンから復元の確認を開きます。Macは控えた�
     def startup():
         p, path, errors = find_profile(profile_path)
         if p:
-            accept_profile(p)
-            if errors:
-                display("\n".join(errors))
+            state["path"] = str(path)
+            accept_profile(p, save=False)
+            check_home_connection(p)
         else:
-            if errors:
-                display("\n".join(errors))
-            connection_setup()
+            display(first_use + ("\n\n" + "\n".join(errors) if errors else ""))
     root.after(150, guarded(startup))
     root.mainloop()

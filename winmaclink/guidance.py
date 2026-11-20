@@ -14,6 +14,9 @@ MAC_PANELS = {
     "local_network": "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocalNetwork",
     "filevault": "x-apple.systempreferences:com.apple.preference.security?FileVault",
 }
+
+DESKFLOW_APP = "/Applications/Deskflow.app"
+DESKFLOW_CORE = f"{DESKFLOW_APP}/Contents/MacOS/deskflow-core"
 STEPS = [
     ("直結LAN", "両方の初期設定を終え、LANケーブルで直接つなぐ。Windows側は設定画面を開ける。Mac側の初回操作はMacの画面から行う。", None),
     ("最初の共有許可", "Macの一般→共有でリモートログインを許可する。画面共有も本人が設定する。まだSSHが通らないMacの管理画面をWindowsから開くことはできない。Macへ一時的に画面・入力機器をつなぐか、既存の管理経路を利用する。", "sharing"),
@@ -96,6 +99,28 @@ def open_mac_panel(p, panel, runner=subprocess.run):
     if result.returncode:
         raise ValueError("Mac設定画面を開けません。SSH接続とGUIログイン状態を確認し、初回はMac側で操作してください。")
     return {"state": "open-requested", "note": "画面が表示され、本人が許可したかは別途確認が必要です。"}
+
+
+def open_deskflow_permissions(p, target="core", *, runner=subprocess.run):
+    """Open Accessibility and select the installed permission target in Finder."""
+    targets = {"app": DESKFLOW_APP, "core": DESKFLOW_CORE}
+    if target not in targets:
+        raise ValueError("Deskflowの許可対象を確認できません。")
+    path = shlex.quote(targets[target])
+    panel = shlex.quote(MAC_PANELS["accessibility"])
+    command = (
+        'set -eu; /bin/launchctl print "gui/$(/usr/bin/id -u)" >/dev/null 2>&1 || exit 21; '
+        f"test -x {shlex.quote(DESKFLOW_CORE)} || exit 22; "
+        f"/usr/bin/open {panel}; "
+        f"/usr/bin/open -R {path}"
+    )
+    result = runner(ssh_arguments(p) + [command], capture_output=True, timeout=12, **hidden_console())
+    if result.returncode == 21:
+        raise ValueError("Macのロックを解除し、登録したアカウントのデスクトップを開いてから、下のボタンを押してください。")
+    if result.returncode == 22:
+        raise ValueError("MacにDeskflowの実行ファイルが見つかりません。WinMacLinkでDeskflowを導入してください。")
+    if result.returncode:
+        raise ValueError("Macの許可画面とFinderを開けませんでした。MacのデスクトップとSSH接続を確認してください。")
 
 
 def format_report(report):

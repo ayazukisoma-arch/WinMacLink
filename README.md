@@ -108,7 +108,7 @@ python -m unittest discover -s tests -v
 
 仕様は [docs/SPEC.md](docs/SPEC.md)、実装状況は [docs/LEDGER.md](docs/LEDGER.md)、不具合は [docs/DEFECTS.md](docs/DEFECTS.md)、検証記録は [docs/VALIDATION.md](docs/VALIDATION.md)。安全境界は [SECURITY.md](SECURITY.md) を参照してください。
 
-配布ZIPには、WinMacLinkのWindows x64向け実行ファイルとソース、DeskflowのWindows x64／ARM64版とmacOSのApple Silicon／Intel版、同梱ソフトのライセンスを収録しています。ビルドする場合は、WindowsでTk付きのPythonと `pyinstaller==6.19.0` を用意し、`python tools/build_deskflow_bundle.py <公式配布ファイルのフォルダー>` を実行します。実行ファイルのアーキテクチャはビルドに使うPythonに従います。
+配布ZIPには、WinMacLinkの実行ファイル、ソースコード、同梱ランタイムのライセンスを収録しています。ビルドする場合は、WindowsでTk付きのPythonと `pyinstaller==6.19.0` を用意し、`python tools/build_windows_release.py` を実行します。実行ファイルのアーキテクチャはビルドに使うPythonに従います。
 
 ## 利用条件
 
@@ -118,8 +118,12 @@ python -m unittest discover -s tests -v
 
 WinMacLink本体は、個人でも業務でも無料で利用できます。原版・改変版とも、配布した版のソースコードを無償で入手できるようにし、原作者の表示・公式リポジトリへのリンク・利用条件を残せば無償で再配布できます。改変版はその旨を明記してください。有償での再配布や有償製品への同梱には著作権者の事前の許可が必要です。 [WinMacLinkの利用条件](LICENSE.md)
 
-同梱のDeskflowには上流のライセンスが適用されます。配布ZIP内の `vendor/deskflow` にライセンス、OpenSSL例外、同梱バージョンのソースを収録しています。TigerVNCはWinGetから個別に取得します。
+DeskflowとTigerVNCには各プロジェクトのライセンスが適用されます。TigerVNCはWinGetから個別に取得します。 [Deskflowの公式配布元](https://github.com/deskflow/deskflow/releases/tag/v1.27.0)
 
-「2モニターで入力共有」では、SSH経由でMacに必要なパッケージを転送し、Windowsを操作元、Macを操作先に設定します。専用のTLS証明書を作成して双方に登録し、Deskflowを起動します。Windowsでの証明書作成にはOpenSSL、またはGit for Windows付属のOpenSSLが必要です。MacのアクセシビリティなどOSの許可は、求められたときにMac上で承認してください。
+「2モニターで入力共有」で承認すると、Windowsから公式版のDeskflowを必要な機種分だけ取得し、SHA-256を照合します。Mac用は直結LANのSSH経由で転送し、Mac上でコード署名も確認します。同じ構成を使い続ける場合は既に導入した版を再利用します。専用のTLS証明書を双方に登録し、Windowsを操作元、Macを操作先として起動します。初回の取得にはWindowsのネット接続が必要です。Windowsでの証明書作成にはOpenSSL、またはGit for Windows付属のOpenSSLが必要です。MacのアクセシビリティなどOSの許可は、求められたときにMac上で承認してください。
+
+Macの入力許可が必要な場合は、WinMacLinkがMacのアクセシビリティ設定を開き、Finderで `deskflow-core` を選択します。Windowsに表示される案内のボタンから、`Deskflow` 本体と `deskflow-core` をそれぞれMacのFinderに表示できます。アクセシビリティの一覧にない項目を、Finderから一覧へドラッグします。Macで両方をオンにすると、WinMacLinkが接続を再試行します。
+
+初回の既定は左です。Macを右に置いている場合は「入力共有でMacへ移る方向」を「右」に変え、「2モニターで入力共有」を押します。同じWinMacLinkウィンドウから切り替えた場合は、そのウィンドウが開始したDeskflow接続を再起動して反映します。
 
 保存済みのMac情報を隠した検証は [docs/BLIND_FIRST_RUN.md](docs/BLIND_FIRST_RUN.md) を参照してください。`python tools/blind_first_run.py` で元の設定を変えずに再現できます。現時点では、初回の自動導入は完了しません。
